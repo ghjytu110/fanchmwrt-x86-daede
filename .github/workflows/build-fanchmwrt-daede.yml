@@ -126,11 +126,11 @@ jobs:
             echo "  -> luci-app-daede 已链接"
           fi
 
-          # 链接 vmlinux-btf (BTF 支持包)
-          if [ -d /tmp/openwrt-daede/vmlinux-btf ]; then
-            ln -sf /tmp/openwrt-daede/vmlinux-btf package/kenzok8/vmlinux-btf
-            echo "  -> vmlinux-btf 已链接"
-          fi
+          # vmlinux-btf 暂时不集成 (BTF 支持在 CI 环境中不可用)
+          # if [ -d /tmp/openwrt-daede/vmlinux-btf ]; then
+          #   ln -sf /tmp/openwrt-daede/vmlinux-btf package/kenzok8/vmlinux-btf
+          #   echo "  -> vmlinux-btf 已链接"
+          # fi
 
           echo "openwrt-daede 插件集成完成"
           ls -la package/kenzok8/
@@ -161,11 +161,10 @@ jobs:
           CONFIG_TARGET_x86_64=y
           CONFIG_TARGET_x86_64_DEVICE_generic=y
 
-          # 内核 BTF 支持 (dae/daed eBPF 必需)
-          CONFIG_KERNEL_DEBUG_INFO=y
-          CONFIG_KERNEL_DEBUG_INFO_BTF=y
-          CONFIG_KERNEL_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
-          CONFIG_KERNEL_PAHOLE_AVAILABLE=y
+          # 内核 BTF 支持 (暂时禁用 - GitHub Actions 环境中 pahole 不兼容)
+          # dae 仍可在运行时使用基本 eBPF 功能
+          # CONFIG_KERNEL_DEBUG_INFO is auto-enabled by the kernel
+          # CONFIG_KERNEL_DEBUG_INFO_BTF is disabled (requires working pahole)
 
           # 网络相关内核模块
           CONFIG_PACKAGE_kmod-sched-core=y
@@ -298,21 +297,13 @@ jobs:
           echo "工具链编译完成"
 
       # ──────────────────────────────────────────────
-      # 8. 编译内核 (含 BTF)
+      # 8. 编译内核
       # ──────────────────────────────────────────────
       - name: 编译内核
         run: |
           cd "${WORKDIR}"
-          make target/compile -j$(nproc) 2>&1 | tail -20
-
-          # 验证 BTF 是否生成
-          echo "===== 检查 BTF 支持 ====="
-          find build_dir -name "vmlinux" -path "*/linux-*/vmlinux" 2>/dev/null | head -5
-          BTF_VMLINUX=$(find build_dir -name "vmlinux" -path "*/linux-*" 2>/dev/null | head -1)
-          if [ -n "$BTF_VMLINUX" ]; then
-            # 检查是否有 BTF 段
-            pahole -F btf "$BTF_VMLINUX" 2>/dev/null && echo "BTF 信息已嵌入内核" || echo "警告: 未检测到 BTF 信息"
-          fi
+          make target/compile -j$(nproc) 2>&1 | tee /tmp/kernel_compile.log | tail -20
+          echo "===== 内核编译完成 ====="
 
       # ──────────────────────────────────────────────
       # 9. 编译软件包 (含 daede)
@@ -320,10 +311,18 @@ jobs:
       - name: 编译软件包
         run: |
           cd "${WORKDIR}"
-          # 先编译依赖包
-          make package/compile -j$(nproc) 2>&1 | tail -30
+          # 先编译依赖包 (保存完整日志)
+          echo "===== 开始编译软件包 ====="
+          if ! make package/compile -j$(nproc) 2>&1 | tee /tmp/pkg_compile.log; then
+            echo "===== 软件包编译失败，显示最后50行 ====="
+            tail -50 /tmp/pkg_compile.log
+            echo ""
+            echo "===== 搜索错误信息 ====="
+            grep -i "error\|failed\|ERROR" /tmp/pkg_compile.log | tail -20
+            exit 1
+          fi
           # 安装到 staging_dir
-          make package/install -j$(nproc) 2>&1 | tail -20
+          make package/install -j$(nproc) 2>&1 | tee /tmp/pkg_install.log | tail -20
 
           echo "===== 检查 daede 包编译结果 ====="
           find bin/packages -name "*dae*" -o -name "*daed*" 2>/dev/null | head -20
@@ -334,10 +333,14 @@ jobs:
       - name: 生成固件镜像
         run: |
           cd "${WORKDIR}"
-          # 先尝试并行编译，失败后回退到单线程 (更稳定)
-          if ! make -j$(nproc) 2>&1 | tee /tmp/build_final.log | tail -30; then
-            echo "并行编译失败，尝试单线程重编译..."
-            make -j1 V=s 2>&1 | tee /tmp/build_final_retry.log | tail -50
+          echo "===== 开始生成固件镜像 ====="
+          if ! make -j$(nproc) 2>&1 | tee /tmp/build_final.log; then
+            echo ""
+            echo "===== 固件编译失败，搜索错误 ====="
+            grep -i "error\|failed\|ERROR" /tmp/build_final.log | tail -30
+            echo ""
+            echo "尝试单线程重编译以获取详细错误..."
+            make -j1 V=s 2>&1 | tee /tmp/build_retry.log | tail -80
           fi
 
           echo "===== 编译产物 ====="
@@ -394,6 +397,10 @@ jobs:
           path: |
             ${{ env.WORKDIR }}/build_info.txt
             ${{ env.WORKDIR }}/.config
+            /tmp/build_final.log
+            /tmp/build_retry.log
+            /tmp/pkg_compile.log
+            /tmp/pkg_install.log
           retention-days: 7
           if-no-files-found: warn
 
