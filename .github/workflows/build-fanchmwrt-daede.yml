@@ -156,40 +156,40 @@ jobs:
           cd "${WORKDIR}"
 
           # ---- 基础 x86_64 配置 (注意: .config 行首不能有空格) ----
-          cat > .config << 'EOF'
-CONFIG_TARGET_x86=y
-CONFIG_TARGET_x86_64=y
-CONFIG_TARGET_x86_64_DEVICE_generic=y
+          sed 's/^[[:space:]]*//' > .config << 'CFGEOF'
+          CONFIG_TARGET_x86=y
+          CONFIG_TARGET_x86_64=y
+          CONFIG_TARGET_x86_64_DEVICE_generic=y
 
-# 内核 BTF 支持 (dae/daed eBPF 必需)
-CONFIG_KERNEL_DEBUG_INFO=y
-CONFIG_KERNEL_DEBUG_INFO_BTF=y
-CONFIG_KERNEL_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
-CONFIG_KERNEL_PAHOLE_AVAILABLE=y
+          # 内核 BTF 支持 (dae/daed eBPF 必需)
+          CONFIG_KERNEL_DEBUG_INFO=y
+          CONFIG_KERNEL_DEBUG_INFO_BTF=y
+          CONFIG_KERNEL_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
+          CONFIG_KERNEL_PAHOLE_AVAILABLE=y
 
-# 网络相关内核模块
-CONFIG_PACKAGE_kmod-sched-core=y
-CONFIG_PACKAGE_kmod-sched-bpf=y
-CONFIG_PACKAGE_kmod-veth=y
-CONFIG_PACKAGE_kmod-xdp-sockets-diag=y
-CONFIG_PACKAGE_kmod-nft-tproxy=y
+          # 网络相关内核模块
+          CONFIG_PACKAGE_kmod-sched-core=y
+          CONFIG_PACKAGE_kmod-sched-bpf=y
+          CONFIG_PACKAGE_kmod-veth=y
+          CONFIG_PACKAGE_kmod-xdp-sockets-diag=y
+          CONFIG_PACKAGE_kmod-nft-tproxy=y
 
-# 基础依赖包
-CONFIG_PACKAGE_ca-bundle=y
+          # 基础依赖包
+          CONFIG_PACKAGE_ca-bundle=y
 
-# daede 代理组件
-CONFIG_PACKAGE_dae=y
-CONFIG_PACKAGE_daed=y
-CONFIG_PACKAGE_luci-app-daede=y
+          # daede 代理组件
+          CONFIG_PACKAGE_dae=y
+          CONFIG_PACKAGE_daed=y
+          CONFIG_PACKAGE_luci-app-daede=y
 
-# 常用工具
-CONFIG_PACKAGE_ip-full=y
-CONFIG_PACKAGE_nftables=y
-CONFIG_PACKAGE_kmod-nft-offload=y
+          # 常用工具
+          CONFIG_PACKAGE_ip-full=y
+          CONFIG_PACKAGE_nftables=y
+          CONFIG_PACKAGE_kmod-nft-offload=y
 
-# 镜像配置
-CONFIG_TARGET_IMAGES_GZIP=y
-EOF
+          # 镜像配置
+          CONFIG_TARGET_IMAGES_GZIP=y
+          CFGEOF
 
           # 让 make 自动解析依赖关系，补全 .config
           make defconfig
@@ -217,61 +217,61 @@ EOF
           mkdir -p files/etc/config
 
           # 覆盖默认网络配置，将 LAN IP 改为 192.168.100.1
-          cat > files/etc/config/network << 'EOF'
-config interface 'loopback'
-	option device 'lo'
-	option proto 'static'
-	option ipaddr '127.0.0.1'
-	option netmask '255.0.0.0'
+          sed 's/^          //' > files/etc/config/network << 'NETEOF'
+          config interface 'loopback'
+          	option device 'lo'
+          	option proto 'static'
+          	option ipaddr '127.0.0.1'
+          	option netmask '255.0.0.0'
 
-config interface 'lan'
-	option device 'br-lan'
-	option proto 'static'
-	option ipaddr '192.168.100.1'
-	option netmask '255.255.255.0'
-	option ip6assign '60'
+          config interface 'lan'
+          	option device 'br-lan'
+          	option proto 'static'
+          	option ipaddr '192.168.100.1'
+          	option netmask '255.255.255.0'
+          	option ip6assign '60'
 
-config interface 'wan'
-	option device 'eth1'
-	option proto 'dhcp'
+          config interface 'wan'
+          	option device 'eth1'
+          	option proto 'dhcp'
 
-config interface 'wan6'
-	option device 'eth1'
-	option proto 'dhcpv6'
-EOF
+          config interface 'wan6'
+          	option device 'eth1'
+          	option proto 'dhcpv6'
+          NETEOF
 
           # 同步修改 DHCP 默认地址池 (与 LAN 同网段)
           mkdir -p files/etc/config
-          cat > files/etc/config/dhcp << 'EOF'
-config dnsmasq
-	option domainneeded '1'
-	option localise_queries '1'
-	option rebind_protection '1'
-	option rebind_domain '192.168.100.1'
-	option local '/lan/'
-	option domain 'lan'
-	option expandhosts '1'
-	option cachesize '1000'
-	option authoritative '1'
-	option readethers '1'
-	option leasefile '/tmp/dhcp.leases'
-	option resolvfile '/tmp/resolv.conf.d/resolv.conf.auto'
-	option nonwildcard '1'
+          sed 's/^          //' > files/etc/config/dhcp << 'DHCPEOF'
+          config dnsmasq
+          	option domainneeded '1'
+          	option localise_queries '1'
+          	option rebind_protection '1'
+          	option rebind_domain '192.168.100.1'
+          	option local '/lan/'
+          	option domain 'lan'
+          	option expandhosts '1'
+          	option cachesize '1000'
+          	option authoritative '1'
+          	option readethers '1'
+          	option leasefile '/tmp/dhcp.leases'
+          	option resolvfile '/tmp/resolv.conf.d/resolv.conf.auto'
+          	option nonwildcard '1'
 
-config dhcp 'lan'
-	option interface 'lan'
-	option start '100'
-	option limit '150'
-	option leasetime '12h'
-	option dhcpv4 'server'
-	option dhcpv6 'server'
-	option ra 'server'
-	option ra_slaac '1'
+          config dhcp 'lan'
+          	option interface 'lan'
+          	option start '100'
+          	option limit '150'
+          	option leasetime '12h'
+          	option dhcpv4 'server'
+          	option dhcpv6 'server'
+          	option ra 'server'
+          	option ra_slaac '1'
 
-config dhcp 'wan'
-	option interface 'wan'
-	option ignore '1'
-EOF
+          config dhcp 'wan'
+          	option interface 'wan'
+          	option ignore '1'
+          DHCPEOF
 
           echo "已设置默认 LAN IP: 192.168.100.1"
           echo "DHCP 地址池: 192.168.100.100 - 192.168.100.249"
